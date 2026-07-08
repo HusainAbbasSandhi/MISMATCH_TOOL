@@ -1,12 +1,13 @@
 # Reelo Reconciliation Tool
 
-Internal support tool with three parts:
+Internal support tool for reconciling POS bills against Reelo. One tool, one job:
 
-1. **Bill Reconciliation** (live) — upload a POS export and a Reelo export, map the columns once, get a mismatch report as a downloadable Excel file. Runs entirely in the browser — no database, nothing stored on a server.
-2. **Customer Lookup** (live, sample-data mode by default) — enter a restID + mobile number, see that customer's full bill history. Ships wired to realistic sample data; flip one setting to switch to live Petpooja data once the API endpoint is confirmed (see "Going live" below).
-3. **Automated Reconciliation** (not built yet) — shown on the dashboard as "Coming soon" and cannot be triggered. This is the future feature that pulls POS/Reelo data automatically instead of manual uploads.
+**Bill Reconciliation** — upload a POS export and a Reelo export, map the columns once, get a mismatch report as a downloadable Excel file. Runs entirely in the browser — no database, nothing stored on a server.
 
 No user database, no accounts table — the whole team shares one password.
+
+(Customer Lookup and Automated Reconciliation were removed from this version at your request — the dashboard now shows only the one tool.)
+
 
 ---
 
@@ -27,11 +28,6 @@ If you don't already have a repo for this:
    |---|---|
    | `APP_PASSWORD` | Whatever shared password you want the support team to use to log in |
    | `SESSION_SECRET` | Any long random string (doesn't need to be memorable — just paste 40 random characters) |
-   | `PETPOOJA_APP_KEY` | Your Petpooja app key |
-   | `PETPOOJA_APP_SECRET` | Your Petpooja app secret |
-   | `PETPOOJA_ACCESS_TOKEN` | Your Petpooja access token |
-   | `PETPOOJA_API_BASE` | Leave as `https://pos-biz.petpooja.com` for now (see note below) |
-   | `FEATURE_LOOKUP_LIVE` | `false` (leave this as `false` until you complete the "Going live" step below) |
 
 5. Click **Deploy**. Vercel builds it and gives you a live URL like `your-project.vercel.app` within a couple of minutes.
 6. Share that URL + the `APP_PASSWORD` with your support team. That's it — it's live.
@@ -41,31 +37,19 @@ Any time you want to change something, edit the code in GitHub (or push via git)
 
 ---
 
-## Going live with the Customer Lookup tool
+## Recent fix worth knowing about
 
-Right now, `FEATURE_LOOKUP_LIVE=false` means the lookup tool answers using realistic sample data (try restID "any" + mobile `9876543210`) — this was intentional, so the tool is fully demoable and the UI/matching logic could be built without a confirmed Petpooja endpoint.
+Real Reelo exports use date formats like `20 Jun, 2026 |` — the trailing pipe character broke the original date parser, which silently mis-read it and caused entire days of real bills to be wrongly flagged "Missing in Reelo." This is fixed in `lib/fileParsing.ts`: date parsing now tries several explicit formats (including this one) and, if a date genuinely can't be read, shows `UNPARSED: <value>` directly in the report and a warning banner on the results screen — instead of silently guessing wrong. If you ever see that warning, check the date column mapping or the raw date format in that file before trusting the report.
 
-To connect it to real data:
-1. Open `lib/petpooja.ts` in this project.
-2. Confirm the real endpoint URL, request payload, and response field names against Petpooja's API docs or Postman collection for your account (open the "Reelo Logs" search page in Petpooja's dashboard, open your browser's Network tab, run a search, and see what request actually fires — that's the ground truth).
-3. Update the `fetch(...)` call and the response-mapping code in `fetchOrdersForDate()` to match what you find.
-4. Set `FEATURE_LOOKUP_LIVE=true` in Vercel's environment variables and redeploy.
+## What's intentionally not built
 
-This is the one piece that was left as "verify before launch" rather than guessed at, since getting Petpooja's exact API contract wrong would silently return incomplete or wrong customer data — worth confirming once rather than shipping a guess.
-
----
-
-## What's intentionally not built yet
-
-- **Automated reconciliation** (pulling data by restID/date instead of file upload) — shown as locked on the dashboard.
-- **Datadog integration** — parked per your call; only Petpooja is wired up.
-- **Ticket lifecycle tracking** (open → investigating → resolved) — the reconciliation tool currently produces a fresh report each run with no memory of past runs, since there's no database. If you want this later, it's the first feature that would require adding a real database (e.g. Vercel Postgres or Supabase) — everything else in this app deliberately avoids needing one.
+- **Automated reconciliation** (pulling data by restID/date instead of file upload), **Customer Lookup**, and **Datadog integration** were all removed/parked per your call. If you want any of these back later, they're straightforward to re-add — ask and I can bring them back in.
+- **Ticket lifecycle tracking** (open → investigating → resolved) — the tool currently produces a fresh report each run with no memory of past runs, since there's no database. If you want this later, it's the first feature that would require adding a real database (e.g. Vercel Postgres or Supabase) — everything else in this app deliberately avoids needing one.
 
 ## Files that matter if you want to change something
 
-- `lib/matching.ts` — the actual bill-matching rules (exact match → normalized trailing-digit match → ambiguous fallback). This is the file to edit if the matching logic itself needs to change.
-- `lib/fileParsing.ts` — how uploaded CSV/Excel files get read into rows.
+- `lib/matching.ts` — the actual bill-matching rules (exact match → normalized trailing-digit match → ambiguous fallback). Edit this if the matching logic itself needs to change.
+- `lib/fileParsing.ts` — how uploaded CSV/Excel files get read into rows, including the date-format handling above.
 - `lib/reportExport.ts` — how the final Excel report is assembled (sheet names, columns).
-- `lib/petpooja.ts` — the Petpooja API wrapper described above.
-- `app/reconcile/page.tsx` — the upload → map → results wizard UI.
-- `app/lookup/page.tsx` — the customer lookup UI.
+- `app/reconcile/page.tsx` — the upload → map → results wizard UI, including the search box and column sorting.
+
